@@ -26,12 +26,12 @@ impl ClusterId {
 
     /// get index of the point from which the cluster originated
     // Note: I _think_ this doesn't return a ClusterId
-    pub(crate) fn get_origin_idx(&self, length: usize) -> usize {
+    pub fn get_origin_idx(&self, length: usize) -> usize {
         (self.0 - length) >> 5
     }
 
     /// get zoom of the point from which the cluster originated
-    pub(crate) fn get_origin_zoom(&self, length: usize) -> usize {
+    pub fn get_origin_zoom(&self, length: usize) -> usize {
         (self.0 - length) % 32
     }
 }
