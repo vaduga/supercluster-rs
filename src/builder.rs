@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use geo_index::kdtree::KDTreeIndex;
-
+use serde_wasm_bindgen::to_value;
+use wasm_bindgen::JsValue;
 use crate::cluster::{ClusterData, ClusterId};
 use crate::options::SuperclusterOptions;
+use crate::statistics::{Accumulator, Statistics};
 use crate::tree::TreeWithData;
 use crate::Supercluster;
 
@@ -13,6 +15,7 @@ pub struct SuperclusterBuilder {
     // TODO: in the future, this should be a chunked array of geoarrow points
     points: Vec<(f64, f64)>,
     pos: usize,
+    threshold_ids: Vec<usize>,
     // If points are already in spherical mercator
     // preprojected: bool,
 }
@@ -20,17 +23,18 @@ pub struct SuperclusterBuilder {
 impl SuperclusterBuilder {
     /// Construct a new [SuperclusterBuilder] with the given number of points and default options.
     pub fn new(num_items: usize) -> Self {
-        Self::new_with_options(num_items, Default::default())
+        Self::new_with_options(num_items, Default::default(), vec![])
     }
 
     /// Construct a new [SuperclusterBuilder] with the given number of points and default options.
-    pub fn new_with_options(num_items: usize, options: SuperclusterOptions) -> Self {
+    pub fn new_with_options(num_items: usize, options: SuperclusterOptions, threshold_ids: Vec<usize>) -> Self {
         let points = Vec::with_capacity(num_items);
 
         Self {
             options,
             points,
             pos: 0,
+            threshold_ids,
         }
     }
 
@@ -43,7 +47,7 @@ impl SuperclusterBuilder {
     }
 
     /// Convert a [SuperclusterBuilder] to a [Supercluster] by running hierarchical clustering.
-    pub fn finish(self) -> Supercluster {
+    pub fn finish(self, accumulators: &HashMap<String, &dyn Accumulator>) -> Supercluster {
         assert_eq!(
             self.pos,
             self.points.len(),
@@ -55,6 +59,20 @@ impl SuperclusterBuilder {
         let min_zoom = self.options.min_zoom;
         let max_zoom = self.options.max_zoom;
         let node_size = self.options.node_size;
+        let threshold_ids = self.threshold_ids.clone();
+
+        // Define callback to initialize statistics
+        let init_statistics = |i| {
+            let mut stats = HashMap::new();
+            accumulators.iter().for_each(|(key, acc_fn)| {
+                let statistic_type = acc_fn.init(i);
+                stats.insert(key.clone(), statistic_type );
+            });
+
+
+            Statistics::new(stats)
+        };
+
 
         let mut data = Vec::with_capacity(self.points.len());
         for (i, (lon, lat)) in self.points.iter().enumerate() {
@@ -62,6 +80,7 @@ impl SuperclusterBuilder {
                 *lon,
                 *lat,
                 ClusterId::new_source_id(i),
+                Some(init_statistics),
             ));
         }
 
@@ -73,7 +92,7 @@ impl SuperclusterBuilder {
         for zoom in (min_zoom..=max_zoom).rev() {
             // The tree at the next higher zoom
             let previous_tree = trees.get_mut(&(zoom + 1)).unwrap();
-            let current = self.cluster(previous_tree, zoom);
+            let current = self.cluster(previous_tree, zoom, accumulators);
 
             trees.insert(zoom, current);
         }
@@ -83,7 +102,12 @@ impl SuperclusterBuilder {
 
     /// Note: this mutates previous_tree's `data`.
     // This is derived from Supercluster._cluster in the original JS implementation
-    fn cluster(&self, previous_tree_with_data: &mut TreeWithData, zoom: usize) -> TreeWithData {
+    fn cluster(
+        &self,
+        previous_tree_with_data: &mut TreeWithData,
+        zoom: usize,
+        accumulators: &HashMap<String, &dyn Accumulator>,
+    ) -> TreeWithData {
         let radius = self.options.radius;
         let extent = self.options.extent;
         let min_points = self.options.min_points;
@@ -110,6 +134,12 @@ impl SuperclusterBuilder {
             let num_points_origin = data[i].num_points;
             let mut num_points = num_points_origin;
 
+            //// added by me
+            let statistics_origin: Statistics = data[i].statistics.clone();
+            let mut statistics = statistics_origin;
+
+            ///
+
             // count the number of points in a potential cluster
             for neighbor_id in &neighbor_ids {
                 // filter out neighbors that are already processed
@@ -123,6 +153,9 @@ impl SuperclusterBuilder {
                     || data[*neighbor_id].zoom.is_some_and(|z| z > zoom)
                 {
                     num_points += data[*neighbor_id].num_points;
+
+
+
                 }
             }
 
@@ -160,6 +193,7 @@ impl SuperclusterBuilder {
                     source_id: id,
                     parent_id: None,
                     num_points,
+                    statistics,
                 });
             } else {
                 // left points as unclustered
@@ -185,6 +219,7 @@ impl SuperclusterBuilder {
 
 #[cfg(test)]
 mod test {
+    use crate::statistics::ThresholdCounter;
     use crate::test::load_fixture::load_places;
 
     use super::*;
@@ -193,10 +228,20 @@ mod test {
     fn test_builder() {
         let coords = load_places();
         let mut builder = SuperclusterBuilder::new(coords.len());
+        let coords_clone = coords.clone();
         for coord in coords {
             builder.add(coord[0], coord[1]);
         }
-        let _supercluster = builder.finish();
+
+        // Create instances of accumulators
+        let mut threshold_counter = ThresholdCounter::new();
+
+        // Add accumulators to a HashMap
+        let mut accumulators: HashMap<String, &mut dyn Accumulator> = HashMap::new();
+        accumulators.insert("threshold_counter".to_string(), &mut threshold_counter);
+
+
+        let _supercluster = builder.finish(&accumulators);
         // dbg!(supercluster);
     }
 }

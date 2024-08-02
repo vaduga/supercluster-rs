@@ -1,3 +1,6 @@
+use serde_wasm_bindgen::to_value;
+use wasm_bindgen::JsValue;
+use crate::statistics::Statistics;
 use crate::util::{latitude_to_y, longitude_to_x, x_to_longitude, y_to_latitude};
 
 // encode both zoom and point index on which the cluster originated -- offset by total length of
@@ -26,12 +29,12 @@ impl ClusterId {
 
     /// get index of the point from which the cluster originated
     // Note: I _think_ this doesn't return a ClusterId
-    pub fn get_origin_idx(&self, length: usize) -> usize {
+    pub(crate) fn get_origin_idx(&self, length: usize) -> usize {
         (self.0 - length) >> 5
     }
 
     /// get zoom of the point from which the cluster originated
-    pub fn get_origin_zoom(&self, length: usize) -> usize {
+    pub(crate) fn get_origin_zoom(&self, length: usize) -> usize {
         (self.0 - length) % 32
     }
 }
@@ -61,18 +64,40 @@ pub struct ClusterData {
 
     // number of points in a cluster
     pub(crate) num_points: usize,
+
+    pub(crate) statistics: Statistics,
 }
 
 impl ClusterData {
     /// Create a new object from longitude-latitude x and y values
-    pub fn new_geographic(lon: f64, lat: f64, source_id: ClusterId) -> Self {
+    pub fn new_geographic<F>(
+        lon: f64,
+        lat: f64,
+        source_id: ClusterId,
+        init_statistics: Option<F>,
+    ) -> Self
+    where
+        F: Fn(usize) -> Statistics,
+    {
         let x = longitude_to_x(lon);
         let y = latitude_to_y(lat);
-        Self::new_projected(x, y, source_id)
+        Self::new_projected(x, y, source_id, init_statistics)
     }
 
     /// Create a new object from spherical mercator x and y values
-    pub fn new_projected(x: f64, y: f64, source_id: ClusterId) -> Self {
+    pub fn new_projected<F>(
+        x: f64,
+        y: f64,
+        source_id: ClusterId,
+        init_statistics: Option<F>,
+    ) -> Self
+    where
+        F: Fn(usize) -> Statistics,
+    {
+        let statistics = init_statistics
+            .map(|init_fn| init_fn(source_id.into()))
+            .unwrap_or_default();
+
         Self {
             x,
             y,
@@ -80,6 +105,7 @@ impl ClusterData {
             source_id,
             parent_id: None,
             num_points: 1,
+            statistics,
         }
     }
 
@@ -115,6 +141,9 @@ pub struct ClusterInfo {
 
     /// Note: this will always be 1 if `is_cluster` is false
     point_count: usize,
+
+    /// Accumulated statistics
+    statistics: Statistics,
 }
 
 impl From<ClusterInfo> for ClusterId {
@@ -130,25 +159,29 @@ impl From<&ClusterInfo> for ClusterId {
 }
 
 impl ClusterInfo {
-    pub(crate) fn new_cluster(id: ClusterId, x: f64, y: f64, count: usize) -> Self {
+    pub(crate) fn new_cluster(id: ClusterId, x: f64, y: f64, count: usize, stats: Statistics) -> Self {
+
+
         Self {
             id,
             x: x_to_longitude(x),
             y: y_to_latitude(y),
             cluster: true,
             point_count: count,
+            statistics: stats,
         }
     }
 
     /// NOTE: here the x and y are already in the user's own coordinate system (usually lon-lat),
     /// so no need to reproject back.
-    pub(crate) fn new_leaf(id: ClusterId, x: f64, y: f64) -> Self {
+    pub(crate) fn new_leaf(id: ClusterId, x: f64, y: f64, stats: Statistics) -> Self {
         Self {
             id,
             x,
             y,
             cluster: false,
             point_count: 1,
+            statistics: stats,
         }
     }
 
@@ -183,6 +216,10 @@ impl ClusterInfo {
     /// This will always be 1 if [`is_cluster`][Self::is_cluster] is `false`.
     pub fn count(&self) -> usize {
         self.point_count
+    }
+
+    pub fn statistics(&self) -> Statistics {
+        self.statistics.clone()
     }
 }
 

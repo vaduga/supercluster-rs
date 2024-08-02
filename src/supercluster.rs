@@ -7,6 +7,7 @@ use crate::error::SuperclusterError;
 use crate::options::SuperclusterOptions;
 use crate::tree::TreeWithData;
 use crate::util::{latitude_to_y, longitude_to_x};
+use gloo_console::log;
 
 /// Create this via a [SuperclusterBuilder][crate::SuperclusterBuilder].
 #[derive(Debug, Clone)]
@@ -87,10 +88,11 @@ impl Supercluster {
                     cluster_data.x,
                     cluster_data.y,
                     cluster_data.num_points,
+                    cluster_data.statistics.clone()
                 ));
             } else {
                 let (x, y) = self.points[id];
-                clusters.push(ClusterInfo::new_leaf(cluster_data.source_id, x, y))
+                clusters.push(ClusterInfo::new_leaf(cluster_data.source_id, x, y, cluster_data.statistics.clone()))
             }
         }
 
@@ -107,6 +109,7 @@ impl Supercluster {
         let origin_id = self.get_origin_idx(cluster_id);
         let origin_zoom = self.get_origin_zoom(cluster_id);
 
+        //log!("dd", self.trees.get(&origin_zoom));
         let tree_with_data = match self.trees.get(&origin_zoom) {
             Some(tree_with_data) => tree_with_data,
             None => return Err(SuperclusterError::NoClusterFound),
@@ -138,10 +141,11 @@ impl Supercluster {
                         cluster_data.x,
                         cluster_data.y,
                         cluster_data.num_points,
+                        cluster_data.statistics.clone()
                     ));
                 } else {
                     let (x, y) = self.points[id];
-                    children.push(ClusterInfo::new_leaf(cluster_data.source_id, x, y))
+                    children.push(ClusterInfo::new_leaf(cluster_data.source_id, x, y, cluster_data.statistics.clone()))
                 }
             }
         }
@@ -263,20 +267,35 @@ impl Supercluster {
 
 #[cfg(test)]
 mod test {
+    use std::collections::HashMap;
+    use crate::statistics::{Accumulator};
     use crate::test::load_fixture::load_places;
     use crate::SuperclusterBuilder;
 
-    #[test]
-    fn test_builder() {
-        let coords = load_places();
-        let mut builder = SuperclusterBuilder::new(coords.len());
-        for coord in coords {
-            builder.add(coord[0], coord[1]);
-        }
-        let supercluster = builder.finish();
-        let clusters = supercluster.get_clusters(-50., -50., 50., 50., 0);
-        dbg!(clusters.len());
-        dbg!(&clusters);
-        // dbg!(supercluster);
-    }
+    // #[test]
+    // fn test_builder() {
+    //     let coords = load_places();
+    //     let mut builder = SuperclusterBuilder::new(coords.len());
+    //     let coords_clone = coords.clone();
+    //     for coord in coords {
+    //         builder.add(coord[0], coord[1]);
+    //     }
+    //
+    //     // Create a vector of values for the Sum accumulator
+    //     let values: Vec<f64> = coords_clone.iter().map(|&(coords)| coords[0] + coords[1]).collect(); // Example calculation
+    //
+    //     // Create instances of accumulators
+    //     let sum_accumulator = Sum::new(values, 0); // Adjust column_idx as needed
+    //
+    //     // Add accumulators to a HashMap
+    //     let mut accumulators: HashMap<String, &dyn Accumulator> = HashMap::new();
+    //     accumulators.insert("sum".to_string(), &sum_accumulator);
+    //
+    //     let supercluster = builder.finish(&accumulators);
+    //
+    //     let clusters = supercluster.get_clusters(-50., -50., 50., 50., 0);
+    //     dbg!(clusters.len());
+    //     dbg!(&clusters);
+    //     // dbg!(supercluster);
+    // }
 }

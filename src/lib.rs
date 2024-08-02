@@ -4,6 +4,7 @@ mod builder;
 mod cluster;
 pub mod error;
 mod options;
+pub mod statistics;
 mod supercluster;
 mod tree;
 pub(crate) mod util;
@@ -15,3 +16,4 @@ pub use supercluster::Supercluster;
 
 #[cfg(test)]
 pub(crate) mod test;
+
