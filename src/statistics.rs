@@ -19,7 +19,7 @@ impl ThresholdCounter {
     pub fn new() -> Self {
         let mut counts = HashMap::new();
         for i in 0..=10 {
-            counts.insert(i, 7);
+            counts.insert(i, 0);
         }
 
         Self { counts }
@@ -32,7 +32,7 @@ impl Accumulator for ThresholdCounter {
         let mut stats_map = HashMap::new();
         for (key, &value) in &self.counts {
             stats_map.insert(
-                key.clone(), // Convert usize key to String
+                key.clone(),
                 value,
             );
         }
