@@ -7,43 +7,37 @@ use serde_wasm_bindgen::to_value;
 
 pub trait Accumulator: Debug {
     fn init(&self, i: usize) -> Statistic;
-    fn accumulate(&mut self, value: usize);
+    fn accumulate(&mut self, i: usize, value: usize);
 }
 
 #[derive(Debug, Clone)]
-pub struct ThresholdCounter {
-    counts: HashMap<usize, usize>,
+pub struct ThresholdIdsCounter {
+    values: Vec<HashMap<usize, usize>>,
 }
 
-impl ThresholdCounter {
+impl ThresholdIdsCounter {
     pub fn new() -> Self {
-        let mut counts = HashMap::new();
+        let mut initial_map = HashMap::new();
         for i in 0..=10 {
-            counts.insert(i, 0);
+            initial_map.insert(i, 0);
         }
-
-        Self { counts }
+         Self {
+             values: vec![initial_map; 100], // total number of points
+         }
     }
 }
 
-impl Accumulator for ThresholdCounter {
+impl Accumulator for ThresholdIdsCounter {
     fn init(&self, i: usize) -> Statistic {
-        // Convert counts to HashMap<String, Statistic>
-        let mut stats_map = HashMap::new();
-        for (key, &value) in &self.counts {
-            stats_map.insert(
-                key.clone(),
-                value,
-            );
-        }
-        Statistic {
-            value: stats_map
-        }
+        // Get the value at index i, which is guaranteed to exist
+        let value = self.values[i].clone();
+
+        Statistic::new(value)
     }
 
-    fn accumulate(&mut self, value: usize) {
-        if let Some(count) = self.counts.get_mut(&value) {
-            *count += 1;
+    fn accumulate(&mut self, i:usize, value: usize) {
+        if let Some(count) = self.values[i].get_mut(&value) {
+           *count += 1;
         }
     }
 
