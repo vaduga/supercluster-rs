@@ -138,18 +138,24 @@ impl SuperclusterBuilder {
             //// added by me
 
             if let Some(acc) = accumulators.get_mut("threshold_counter") {
-                acc.accumulate(thr_id); // Run the accumulator
+                acc.accumulate(i, thr_id);
             } else {
-                eprintln!("Accumulator 'threshold_counter' not found.");
+                // Handle the case where the accumulator is not found, if necessary
+                println!("Accumulator 'threshold_counter' not found.");
             }
 
-
-                let mut st = HashMap::new();
+                 let mut st = HashMap::new();
                 accumulators.iter().for_each(|(key, acc_fn)| {
                     st.insert(key.clone(), acc_fn.init(i));
                 });
 
             let statistics = Statistics::new(st);
+
+            //
+            // let statistics = accumulators.iter()
+            //     .map(|init_fn| init_fn(i.into()))
+            //     .unwrap_or_default();
+
 
             ///
 
